@@ -1,0 +1,282 @@
+import csv
+import pandas as pd
+
+read_file = pd.read_excel (r'C:\Users\marsh\OneDrive\Desktop\Project #2\Excel\Project #2 Data.xlsx', sheet_name='ADP')
+read_file.to_csv (r'C:\Users\marsh\OneDrive\Desktop\Project #2\Code\ADP.csv', index = None, header=True)
+
+read_file = pd.read_excel (r'C:\Users\marsh\OneDrive\Desktop\Project #2\Excel\Project #2 Data.xlsx', sheet_name='LMT')
+read_file.to_csv (r'C:\Users\marsh\OneDrive\Desktop\Project #2\Code\LMT.csv', index = None, header=True)
+
+read_file = pd.read_excel (r'C:\Users\marsh\OneDrive\Desktop\Project #2\Excel\Project #2 Data.xlsx', sheet_name='AIR')
+read_file.to_csv (r'C:\Users\marsh\OneDrive\Desktop\Project #2\Code\AIR.csv', index = None, header=True)
+
+from math import sqrt, exp, log
+from scipy.stats import norm
+
+# black-scholes formula: parity test case
+
+def black_scholes_call(stock, strike, rfi, delta, time, sigma):
+    d1_num = log(stock/strike) + (rfi - delta + 0.5 * sqrt(sigma)) * time
+    d1_den = sigma * sqrt(time)
+    d1 = d1_num / d1_den
+    d1_prob = norm.cdf(d1)
+    
+    d2 = d1 - sigma * sqrt(time)
+    d2_prob = norm.cdf(d2)
+    
+    bsc_1 = stock * exp(-delta * time) * d1_prob
+    bsc_2 = strike * exp(-rfi * time) * d2_prob
+    
+    bsc = bsc_1 - bsc_2
+    
+    return bsc
+
+def black_scholes_put(stock, strike, rfi, delta, time, sigma):
+    d1_num = log(stock/strike) + (rfi - delta + 0.5 * sqrt(sigma)) * time
+    d1_den = sigma * sqrt(time)
+    d1 = d1_num / d1_den
+    d1_prob = norm.cdf(d1)
+    
+    d2 = d1 - sigma * sqrt(time)
+    d2_prob = norm.cdf(d2)
+    
+    bsp_1 = strike * exp(-rfi * time) * (1 - d2_prob)
+    bsp_2 = stock * exp(-delta * time) * (1 - d1_prob)
+    bsp = bsp_1 - bsp_2
+    
+    return bsp
+
+def black_scholes_parity(stock, strike, rfi, delta, time, sigma):
+    
+    put = black_scholes_put(stock, strike, rfi, delta, time, sigma)
+    call = black_scholes_call(stock, strike, rfi, delta, time, sigma)
+    call += strike * exp(-rfi * time) - stock * exp(-delta * time)
+    
+    print("Call = " + str(call))
+    print("Put = " + str(put))
+    
+    if put == call:
+        print("Put-call parity holds")
+    else:
+        print("Put-call parity does not hold")
+
+# given test case
+black_scholes_parity(250,260,.04,.02,.5,.2)
+
+from sympy import *
+
+global x
+x=Symbol("x")
+
+d1_num = log(250/260) + (.04 - .02 + 0.5 * sqrt(x)) * 0.5
+d1_den = x * sqrt(0.5)
+f = d1_num/d1_den
+print("As sigma approaches 0, d1 approaches " + str(limit(f,x,0)))
+print("As sigma approaches oo, d1 approaches " + str(limit(f,x,oo)))
+
+d2_num = log(250/260) + (.04 - .02 - 0.5 * sqrt(x)) * 0.5
+d2_den = x * sqrt(0.5)
+f = d2_num / d2_den
+print("As sigma approaches 0, d2 approaches " + str(limit(f,x,0)))
+print("As sigma approaches oo, d2 approaches " + str(limit(f,x,oo)))
+
+global rows
+
+def d(sigma, S, K, r, t):
+    d1 = 1 / (sigma * sqrt(t)) * ( log(S/K) + (r + sigma**2/2) * t)
+    d2 = d1 - sigma * sqrt(t)
+    return d1, d2
+
+def call_price(sigma, S, K, r, t, d1, d2):
+    C = norm.cdf(d1) * S - norm.cdf(d2) * K * exp(-r * t)
+    return C
+
+def put_price(sigma, S, K, r, t, d1, d2):
+    P = -norm.cdf(-d1) * S + norm.cdf(-d2) * K * exp(-r * t)
+    return P
+
+#  Option parameters
+
+def IV_call(pos):
+	S = float(rows[pos][2])
+	K = float(rows[pos][2])
+	t = 90.0 / 365.0
+	r = float(rows[pos][5]) / 100
+	P0 = float(rows[pos][3])
+
+	#  Tolerances
+	tol = 1e-3
+	epsilon = 1
+
+	#  Variables to log and manage number of iterations
+	count = 0
+	max_iter = 1000
+
+	#  We need to provide an initial guess for the root of our function
+	vol = 0.20
+
+	while epsilon > tol:
+		#  Count how many iterations and make sure while loop doesn't run away
+		count += 1.0
+		if count >= max_iter:
+			print('Breaking on count')
+			break;
+
+		#  Log the value previously calculated to computer percent change
+		#  between iterations
+		orig_vol = vol
+
+		#  Calculate the value of the call price
+		d1, d2 = d(vol, S, K, r, t)
+		#  Here is where you put either call or put
+		function_value = call_price(vol, S, K, r, t, d1, d2) - P0
+
+		#  Calculate vega, the derivative of the price with respect to
+		#  volatility
+		vega = S * norm.pdf(d1) * sqrt(t)
+
+		#  Update for value of the volatility
+		vol = -function_value / vega + vol
+
+		#  Check the percent change between current and last iteration
+		epsilon = abs( (vol - orig_vol) / orig_vol )
+		
+	rows[pos][6] = vol
+
+def IV_put(pos):
+	S = float(rows[pos][2])
+	K = float(rows[pos][2])
+	t = 90.0 / 365.0
+	r = float(rows[pos][5]) / 100
+	P0 = float(rows[pos][3])
+
+	#  Tolerances
+	tol = 1e-3
+	epsilon = 1
+
+	#  Variables to log and manage number of iterations
+	count = 0
+	max_iter = 1000
+
+	#  We need to provide an initial guess for the root of our function
+	vol = 0.20
+
+	while epsilon > tol:
+		#  Count how many iterations and make sure while loop doesn't run away
+		count += 1.0
+		if count >= max_iter:
+			print('Breaking on count')
+			break;
+
+		#  Log the value previously calculated to computer percent change
+		#  between iterations
+		orig_vol = vol
+
+		#  Calculate the value of the call price
+		d1, d2 = d(vol, S, K, r, t)
+		#  Here is where you put either call or put
+		function_value = put_price(vol, S, K, r, t, d1, d2) - P0
+
+		#  Calculate vega, the derivative of the price with respect to
+		#  volatility
+		vega = S * norm.pdf(d1) * sqrt(t)
+
+		#  Update for value of the volatility
+		vol = -function_value / vega + vol
+
+		#  Check the percent change between current and last iteration
+		epsilon = abs( (vol - orig_vol) / orig_vol )
+		
+	rows[pos][6] = vol
+
+def IV_writer():
+	for pos in range(len(rows)):
+		if rows[pos][1] == "P":
+			continue
+		else:
+			IV_call(pos)
+
+	for pos in range(len(rows)):
+		if rows[pos][1] == "C":
+			continue
+		else:
+			IV_call(pos)
+
+# Calculate and write IV values for ADP
+filename = "ADP.csv"
+
+# initializing the titles and rows list
+fields = []
+rows = []
+
+# reading csv file
+with open(filename, 'r') as csvfile:
+    # creating a csv reader object
+    csvreader = csv.reader(csvfile)
+
+    # extracting field names through first row
+    fields = next(csvreader)
+  
+    # extracting each data row one by one
+    for row in csvreader:
+        rows.append(row)
+
+IV_writer()
+
+file = open('ADP_IV.csv', 'w+', newline = '')
+with file:
+	write = csv.writer(file)
+	write.writerows(rows)
+
+# Calculate and write IV values for LMT
+filename = "LMT.csv"
+
+# initializing the titles and rows list
+fields = []
+rows = []
+
+# reading csv file
+with open(filename, 'r') as csvfile:
+    # creating a csv reader object
+    csvreader = csv.reader(csvfile)
+
+    # extracting field names through first row
+    fields = next(csvreader)
+  
+    # extracting each data row one by one
+    for row in csvreader:
+        rows.append(row)
+
+IV_writer()
+
+file = open('LMT_IV.csv', 'w+', newline = '')
+with file:
+	write = csv.writer(file)
+	write.writerows(rows)
+	
+	
+# Calculate and write IV values for AIR
+filename = "AIR.csv"
+
+# initializing the titles and rows list
+fields = []
+rows = []
+
+# reading csv file
+with open(filename, 'r') as csvfile:
+    # creating a csv reader object
+    csvreader = csv.reader(csvfile)
+
+    # extracting field names through first row
+    fields = next(csvreader)
+  
+    # extracting each data row one by one
+    for row in csvreader:
+        rows.append(row)
+
+IV_writer()
+
+file = open('AIR_IV.csv', 'w+', newline = '')
+with file:
+	write = csv.writer(file)
+	write.writerows(rows)
